@@ -1,0 +1,185 @@
+CREATE TABLE NAshville_housing (
+	uniqueID varchar(250) PRIMARY KEY,
+	parcelid varchar(250),
+	landuse varchar(250),
+	propertyaddress varchar(250),
+	saledate date,
+	saleprice integer,
+	legalreference varchar(250),
+	soldasvacant varchar(250,
+	ownername varchar(250),
+	owneraddress varchar(250),
+	acreage varchar(250),
+	taxdistrict varchar(250),
+	landvalue integer,
+	buildingvalue integer,
+	totalvalue integer,
+	yearbuilt varchar(250),
+	bedrooms integer,
+	fullbath integer,
+	halfbath integer
+)
+
+
+
+COPY public.NAshville_housing from 'Your Path\Nashville_Housing.csv'  DELIMITER ',' csv HEADER
+
+
+
+SELECT * from NAshville_housing
+
+
+
+------------------------------------------------
+--Address population
+
+SELECT a.parcelid, a.propertyaddress, b.parcelid, b.propertyaddress
+, NULLIF(b.propertyaddress, a.propertyaddress) 
+FROM NAshville_housing a JOIN  NAshville_housing b 
+ON a.parcelid = b.parcelid AND a.uniqueid <> b.uniqueid
+WHERE a.propertyaddress IS NULL
+--We can use string as well in order to populate column, such as 
+--'No Address' etc.
+UPDATE NAshville_housing
+SET propertyaddress = NULLIF(b.propertyaddress, a.propertyaddress) 
+FROM NAshville_housing a JOIN  NAshville_housing b 
+ON a.parcelid = b.parcelid AND a.uniqueid <> b.uniqueid
+WHERE a.propertyaddress IS NULL
+
+------------------------------------------------
+
+--Breaking out addresses and name into different columns
+SELECT * from NAshville_housing
+
+SELECT
+SUBSTRING(propertyaddress, 1, POSITION(',' IN propertyaddress) -1) AS address
+, SUBSTRING(propertyaddress, POSITION(',' IN propertyaddress) +1 ,
+LENGTH(propertyaddress))  AS address
+FROM NAshville_housing
+
+ALTER TABLE NAshville_housing
+ADD propertysplitaddress varchar(250);
+
+UPDATE NAshville_housing
+SET propertysplitaddress = SUBSTRING(propertyaddress, 1, POSITION(',' IN propertyaddress) -1) 
+
+ALTER TABLE NAshville_housing
+ADD property_split_city varchar(250);
+
+UPDATE NAshville_housing
+SET property_split_city = SUBSTRING(propertyaddress, 
+									POSITION(',' IN propertyaddress) +1 ,
+LENGTH(propertyaddress))
+
+-----Another approach is using split part function which I think it is way easier than substring
+
+SELECT * FROM NAshville_housing
+
+
+SELECT split_part(owneraddress, ',', 1)
+, split_part(owneraddress, ',', 2)
+, split_part(owneraddress, ',', 3)
+FROM NAshville_housing
+
+
+ALTER TABLE NAshville_housing
+ADD owner_split_address varchar(250);
+
+UPDATE NAshville_housing
+SET owner_split_address = split_part(owneraddress, ',', 1)
+
+
+ALTER TABLE NAshville_housing
+ADD owner_split_city varchar(250);
+
+UPDATE NAshville_housing
+SET owner_split_city =  split_part(owneraddress, ',', 2)
+
+
+ALTER TABLE NAshville_housing
+ADD owner_split_state varchar(250);
+
+UPDATE NAshville_housing
+SET owner_split_state = split_part(owneraddress, ',', 3)
+
+-- I'n going to use split_part to split names as well.
+SELECT split_part(ownername, ',', 2)
+, split_part(ownername, ',', 1)
+FROM NAshville_housing
+
+
+ALTER TABLE NAshville_housing
+ADD owner_first_name varchar(250);
+
+UPDATE NAshville_housing
+SET owner_first_name = split_part(ownername, ',', 2)
+
+
+ALTER TABLE NAshville_housing
+ADD owner_last_name  varchar(250);
+
+UPDATE NAshville_housing
+SET  owner_last_name = split_part(ownername, ',', 1)
+
+
+
+
+-----------------------------------------------------------
+--Change soldasvacant's Y, YES and  N, NO  values to Yes and No
+
+SELECT DISTINCT(soldasvacant), COUNT(soldasvacant)
+FROM NAshville_housing
+GROUP BY soldasvacant
+ORDER BY 2
+
+SELECT soldasvacant
+, CASE WHEN soldasvacant = 'true' THEN 'YES'
+	   WHEN soldasvacant =  'false' THEN 'NO'  
+	   END soldasvacant
+FROM NAshville_housing	   
+
+UPDATE NAshville_housing
+SET  soldasvacant =  CASE WHEN soldasvacant = 'true' THEN 'YES'
+	   WHEN soldasvacant =  'false' THEN 'NO'  
+	   END 
+-----------------------------------------------------------
+--Remove duplicates with subqueries
+
+
+DELETE  FROM  NAshville_housing
+WHERE uniqueid IN(
+				SELECT uniqueid 
+				FROM (
+					SELECT uniqueid, 
+						ROW_NUMBER() OVER(
+							PARTITION BY parcelid,
+										propertyaddress,
+										saleprice,
+										saledate,
+										legalreference
+										ORDER BY 
+											uniqueid) AS row_num
+								  			FROM NAshville_housing) AS tm
+											WHERE tm.row_num > 1); 
+	
+-------------------------------------------------------------------------------------------------------
+
+
+-----------------------------------------CONCLUSION----------------------------------------------------
+--1 - First I started with creating table in Postgresql database, then import data to database
+--2 - After looking through the dataset, it can be seen that columns such as, properyaddress, 
+--	owneraddress, owner name columns have bunch of information in them. And that is not good for 
+--	possible queires in the future. I used 2 approach SUBSTRING and split_part to split columns
+--	Keep in mind that this queries generated using Postgresql, hence even though much of the syntax
+--	is the same, you might have to come up with equivalent of functions in your SQL server
+--3 - Next query if you check data again you will see that SoldAsVacant column should have only Yes 
+--	and NO answer but in some cases, 'Y' and 'N' also used. 
+--4- In last query I  deletde duplicate values from data.
+
+
+
+
+
+
+
+

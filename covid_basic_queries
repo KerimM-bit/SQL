@@ -1,0 +1,137 @@
+--First we create table and column names respect to 
+--data we are going import( names should be exact same)
+
+
+CREATE TABLE  covid_death
+(
+iso_code varchar(50),
+continent varchar(50),
+location varchar(50),
+population real,
+date date,
+total_cases real,
+new_cases real,
+new_cases_smoothed real,
+total_deaths  real,
+new_deaths real,
+new_deaths_smoothed real,
+total_cases_per_million real,
+new_cases_per_million real,
+new_cases_smoothed_per_million real,
+total_deaths_per_million real,
+new_deaths_per_million real,
+new_deaths_smoothed_per_million real,
+reproduction_rate real,
+icu_patients real,
+icu_patients_per_million real,
+hosp_patients real,
+hosp_patients_per_million real,
+weekly_icu_admissions real,
+weekly_icu_admissions_per_million real, 
+weekly_hosp_admissions real,
+weekly_hosp_admissions_per_million real
+)
+--Importing data to Pgadmin
+COPY public.covid_death from 'E:\Data analyst\Portfolio\covid_death.csv'  DELIMITER ',' csv HEADER
+
+
+
+
+SELECT * FROM covid_death ORDER BY 3,4
+
+-- Select data that we are going to be using
+
+SELECT location, date, total_cases, new_cases, 
+total_deaths, population
+FROM covid_death
+ORDER BY 1,2
+
+-- Total cases vs Total Deaths
+-- Shows likelihood of dying if you contact covid in your country
+SELECT location, date, total_cases, total_deaths, 
+(total_deaths/total_cases) * 100 AS DeathPercentage
+FROM covid_death
+WHERE location  = 'Azerbaijan'
+ORDER BY 1,2 NULLS LAST
+
+
+--Percentage of population got Covid
+SELECT location, date, total_cases, population, 
+(total_cases/population) * 100 AS CasesPercentage
+FROM covid_death
+WHERE location  = 'Azerbaijan'
+ORDER BY 1,2
+
+--Highest infection Rate
+
+
+SELECT  location, MAX(total_cases) AS highestinfection, population, 
+	MAX(CAST(total_cases AS numeric)/population) * 100 AS Percentagepopinfected
+	FROM covid_death
+	GROUP BY population, location
+	ORDER BY MAX(total_cases/population) * 100 DESC NULLS LAST
+	
+--HIghest infection rate by country
+SELECT  location,  MAX(total_deaths) AS highestinfection
+	FROM covid_death
+	GROUP BY  location
+	ORDER BY MAX(total_deaths) DESC NULLS LAST	
+	
+--Highest date rate by continent
+SELECT  continent,  SUM(total_cases) AS highestdeathcount
+	FROM covid_death
+	WHERE continent is not null
+	GROUP BY  continent
+	ORDER BY SUM(total_cases) DESC NULLS LAST	
+	
+	
+
+--Infection rate VS mortality rate for world	
+SELECT   SUM(CAST(new_deaths AS integer)) AS Total_deaths, SUM(new_cases) AS Total_Cases_Overall,
+	SUM (new_deaths) / SUM(new_cases) * 100 AS Percentagepopinfected
+	FROM covid_death
+	WHERE continent is not  null
+	ORDER BY SUM(total_cases) DESC NULLS LAST
+	
+SELECT * FROM covid_vac
+WHERE new_vaccinations IS NOT NULL
+
+------------------------------------------------------------
+--Creating view for later visualisations
+
+CREATE VIEW  PercentPopulationVaccination AS
+SELECT dea.continent, dea.location, dea.date, population, vac.new_vaccinations
+	, SUM(CAST (new_vaccinations AS real)) OVER (Partition BY dea.location 
+												 ORDER BY dea.location, dea.date) AS
+	Rolling_people_vaccinated
+	FROM covid_death dea
+	INNER JOIN covid_vac vac
+	ON dea.location = vac.location and  dea.date = vac.date
+	WHERE vac.continent is not null
+	
+
+SELECT *
+FROM PercentPopulationCaccination;
+
+--Health information VS Covid-19
+CREATE VIEW Health_and_covid AS
+SELECT v.continent, v.location, v.date, v.male_smokers, v.female_smokers, v.median_age, v.gdp_per_capita,
+v.cardiovasc_death_rate, v.diabetes_prevalence, v.life_expectancy, d.total_cases, d.new_cases,
+d.total_deaths, d.new_deaths
+FROM covid_vac v LEFT  JOIN covid_death d 
+ON v.location = d.location AND v.date = d.date
+
+SELECT * FROM Health_and_covid
+WHERE continent IS NOT NULL;
+
+--Death rate by population 
+SELECT continent, location, population, round(SUM(CAST( total_deaths AS numeric)),2) AS Total_deaths,
+round(SUM(CAST(total_deaths AS numeric)/population),3) * 100 AS Deathpercantage
+FROM covid_death
+GROUP BY ROLLUP(continent, location), population
+ORDER BY 2
+
+
+
+
+

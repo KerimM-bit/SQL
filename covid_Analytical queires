@@ -1,0 +1,118 @@
+--Analytical Functions !!!
+
+-- Increasing number of Infection per passing day.
+SELECT continent, location, date, new_cases,
+SUM(new_cases) OVER (Partition BY location ORDER BY date) 
+AS increasing_total 
+FROM health_and_covid
+WHERE continent IS NOT NULL AND location IN(
+'Azerbaijan', 'Turkey', 'Israel', 'Japan', 'Finland')
+
+-- Increasing Rate of Infection per passing day.
+WITH increasing_number AS(
+	SELECT h.continent, h.location, h.date, p.population, 
+	h.new_cases,  SUM(CAST(h.new_cases AS numeric)) 
+	OVER (Partition BY h.location ORDER BY h.date)
+	AS increasing_total 
+	FROM health_and_covid h JOIN percentpopulationcaccination p
+	ON h.location = p.location AND h.date = p.date
+	WHERE h.continent IS NOT NULL AND h.location IN(
+	'Azerbaijan', 'Turkey', 'Israel', 'Japan', 'Finland'))
+SELECT *, round(increasing_total/population,3) * 100
+AS Infection_rate 
+FROM increasing_number
+
+-- Calculating Pandemic growth factor 
+-- PGF = Number of Cases on DAY(N)/ Number of cases on DAY(N-1)
+WITH cte_previous AS (
+		SELECT continent, location, date, new_cases,
+		LAG(new_cases) OVER (Partition BY location ORDER BY date) 
+		AS previous_day 
+		FROM health_and_covid
+		WHERE continent IS NOT NULL AND  new_cases != 0 AND
+		location IN(
+		'Azerbaijan', 'Turkey', 'Israel', 'Japan', 'Finland')),
+
+	cte_present AS( 
+		SELECT *,
+		round(CAST((new_cases-previous_day)/new_cases * 100 AS integer ),0)
+		AS Pandemi_growth_factor
+		FROM cte_previous
+		WHERE previous_day != 0)
+SELECT *,
+	CASE 
+		WHEN pandemi_growth_factor < 0 THEN 'decrease'
+		WHEN pandemi_growth_factor = 0 THEN 'no change'
+		ELSE 'increase'
+	END AS TREND
+FROM cte_present
+
+--Highest Number of cases on specific date range
+WITH highest AS (
+	SELECT *, RANK() OVER (Partition BY date 
+						   ORDER BY new_cases DESC)
+	AS Highest_number_cases
+	FROM health_and_covid
+	WHERE continent IS NOT NULL)
+SELECT * FROM Highest
+WHERE Highest_number_cases = 1
+AND date BETWEEN '2020-03-20' AND '2020-03-30'
+
+-- Cases and mortality Rate by countries
+SELECT location, SUM(CAST(total_cases AS integer)) AS Confirmed, 
+	SUM(CAST(total_deaths AS integer)) AS Deaths,
+	round(SUM(CAST(total_deaths AS numeric) / total_cases),2)  
+	AS Fatality_Rate,
+	round(SUM(CAST(new_deaths AS numeric) / population) * 100000, 2) AS Death_Per_100k
+	FROM covid_death 
+	WHERE continent IS NOT NULL
+	GROUP BY location
+	HAVING SUM(CAST(total_deaths AS integer)) > 0
+	ORDER BY Fatality_rate DESC;
+
+--Looking at total Population vs Vaccinations for specified Countries
+WITH popvsvac AS(
+SELECT dea.continent, dea.location, dea.date, population, vac.new_vaccinations
+	, SUM(CAST (new_vaccinations AS real)) OVER (Partition BY dea.location
+												 ORDER BY dea.location, dea.date) AS
+	Rolling_people_vaccinated
+	FROM covid_death dea
+	INNER JOIN covid_vac vac
+	ON dea.location = vac.location and  dea.date = vac.date
+	WHERE vac.continent is not null AND dea.location IN(
+	'Azerbaijan', 'Turkey', 'Israel', 'Japan', 'Finland') )
+SELECT *, (Rolling_people_vaccinated/popvsvac.population) * 100 AS Vaccination_Percentage
+FROM popvsvac
+
+--Distribution of vaccination per day in Turkey
+SELECT dea.location, dea.date  population, dea.new_cases, vac.new_vaccinations
+	, SUM(CAST (new_vaccinations AS integer)) OVER (Partition BY dea.location 
+												 ORDER BY dea.location, dea.date) AS
+	Rolling_people_vaccinated
+	FROM covid_death dea
+	INNER JOIN covid_vac vac
+	ON dea.location = vac.location and  dea.date = vac.date
+	WHERE vac.continent is not null and dea.location = 'Turkey'
+
+--Checking incrase rate by passing day 	
+WITH cte_1 AS (
+SELECT  h.continent, h.location, h.date, p.population,  h.new_cases
+	, SUM(CAST (new_cases AS real)) OVER (Partition BY h.location
+						  ORDER BY h.location, h.date) AS Increasing_cases_per_day
+	FROM health_and_covid h JOIN percentpopulationvaccination p 
+	ON h.location = p.location AND h.date = p.date
+	WHERE h.continent IS NOT NULL AND h.location = 'Turkey')
+SELECT *, (Increasing_cases_per_day/population) * 100 AS Increase_Case_rate
+FROM cte_1
+
+--Distrubuted vaccinations vs Vaccinated people rate
+WITH cte_2 AS (
+	SELECT d.location, d.date, d.population, d.new_cases, d.new_deaths, 
+	v.people_vaccinated, v.total_vaccinations
+	FROM covid_death d LEFT JOIN covid_vac v 
+	ON d.location = v.location AND d.date = v.date
+	WHERE d.continent IS NOT NULL AND d.location IN('Azerbaijan', 'Turkey', 'Georgia', 'Israel'))
+SELECT *, round(CAST(people_vaccinated AS numeric)/CAST(total_vaccinations AS numeric),3) * 100 AS Vaccinations_Ratio
+FROM cte_2 WHERE people_vaccinated != 0;
+
+
